@@ -1,0 +1,32 @@
+{
+  "description": "AX-Eval 자동 피드백 훅 — 세션 시작 시 약한 축 nudge + 요청 품질 코치, 세션 종료 시 로그 자동 변환.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/ax-nudge.sh\"",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "bash -c 'echo \"{\\\"systemMessage\\\": \\\"[AX-Eval 요청 코치] 사용자가 배경·목적·출력형식 없이 모호한 요청을 하면, 답변 후 빈 줄과 함께 💡 요청 팁: [한 줄 개선 제안] 형식으로 더 나은 요청 방법을 제안하세요. 요청이 충분히 구체적이거나 단순 확인 요청이면 팁을 생략하세요.\\\"}'\"",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "SessionStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/ax-eval-log-sync.sh\"",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

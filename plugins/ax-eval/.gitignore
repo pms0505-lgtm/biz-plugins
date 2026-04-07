@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.pyo
+.env
+.DS_Store
+Thumbs.db
+
+# 로컬 설치 캐시 (플러그인 설치 시 자동 생성)
+.claude/commands/
+.claude/skills/
