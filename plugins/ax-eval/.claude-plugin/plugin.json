@@ -1,6 +1,6 @@
 {
   "name": "ax-eval",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "사업관리본부 AI 전환(AX) 레벨 평가 플러그인. Claude Code 사용 로그를 자동 분석하여 4축(요청력/검증력/활용력/판단력) × 5단계 레벨 평가, 성장 추적, 맞춤 활용 팁 제공.",
   "author": {
     "name": "pms0505-lgtm"
