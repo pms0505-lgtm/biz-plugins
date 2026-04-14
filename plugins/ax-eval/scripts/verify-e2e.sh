@@ -118,9 +118,28 @@ echo ""
 echo "[5] ax-analyst.md 필수 반환 필드"
 
 ANALYST="$PROJ/agents/ax-analyst.md"
-for field in "LEVEL:" "LEVEL_NAME:" "COMPOSITE_SCORE:" "SCORES:" "WEAKEST_AXIS:" "HARNESS_UNUSED:"; do
+for field in "LEVEL:" "LEVEL_NAME:" "COMPOSITE_SCORE:" "SCORES:" "WEAKEST_AXIS:" "HARNESS_UNUSED:" "ASSET_SCORE:" "ASSET_DETAILS:"; do
     check "$field 정의됨" grep -q "$field" "$ANALYST"
 done
+
+# ── 6. 정리력(자산화) 신호 frontmatter 키 검증 ───────────────
+echo ""
+echo "[6] convert_sessions.py 정리력 신호 키 존재"
+
+CONV="$PROJ/scripts/convert_sessions.py"
+for key in "claude_md_lines" "claude_md_sections" "handoff_present" "docs_volume" \
+           "slash_cmd_defined" "skill_defined" "rules_defined" "schema_defined"; do
+    check "$key 키 존재" grep -q "\"$key\"" "$CONV"
+done
+
+# ── 7. ax-eval-check 5축 출력 확인 ──────────────────────────
+echo ""
+echo "[7] ax-eval-check 5축 출력 확인"
+
+CHECK_SKILL="$PROJ/skills/ax-eval-check/SKILL.md"
+check "정리력 행 포함" grep -q "정리력" "$CHECK_SKILL"
+check "ASSET_BLOCK 정의" grep -q "ASSET_BLOCK" "$CHECK_SKILL"
+check "ASSET_NEXT_TIP 정의" grep -q "ASSET_NEXT_TIP" "$CHECK_SKILL"
 
 # ── 결과 ────────────────────────────────────────────────────
 echo ""

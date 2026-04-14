@@ -53,7 +53,7 @@ ls ~/ax-eval/conversations/
     └→ skills/ax-eval/SKILL.md (메인 라우터, user-invocable: true)
         └→ skills/ax-eval-check/SKILL.md
             ├→ scripts/convert_sessions.py  (최신 로그 변환)
-            └→ agents/ax-analyst.md         (4축 스코어 계산)
+            └→ agents/ax-analyst.md         (5축 스코어 계산)
                 ├→ ~/ax-eval/conversations/**/*.md  (변환된 로그 읽기)
                 ├→ references/ax-maturity-model.md  (레벨 기준)
                 └→ ~/ax-eval/assessments/           (결과 저장)
@@ -79,10 +79,10 @@ ls ~/ax-eval/conversations/
 
 | 구분 | 내용 |
 |------|------|
-| 측정 축 | 요청력 / 검증력 / 활용력 / 판단력 |
+| 측정 축 | 요청력 / 검증력 / 활용력 / 판단력 / **정리력** |
 | 레벨 | ⭐(입문) ~ ⭐⭐⭐⭐⭐(전략) |
 | 역할 | UA마케터 / CRM마케터 / 디자이너 / 데이터분석가 / 개발자 / 미선택 |
-| 데이터 | `~/.claude/projects/**/*.jsonl` 자동 분석 |
+| 데이터 | `~/.claude/projects/**/*.jsonl` 자동 분석 + 프로젝트 디렉토리 스캔(정리력) |
 
 **레벨 점수 범위** (종합 가중 평균 → 별점):
 
@@ -102,10 +102,11 @@ ls ~/ax-eval/conversations/
 |----|------|
 | 요청력 | `min(avg_len/200,1.0)*0.2 + specific_ratio*0.5 + structure_ratio*0.3` (+0.1 보너스: output_format_spec_ratio > 0.3) |
 | 검증력 | `verify_ratio*0.5 + correction_ratio*0.3 + follow_up_ratio*0.2` |
-| 활용력 | tool_diversity 조건표 기반 + harness_count 보너스 (≥2: +0.5, ≥5: +1.0) |
-| 판단력 | `strat_ratio*0.6 + alt_request_ratio*0.2 + thinking_turn_ratio*0.2` + harness 보너스 (+0.3, claude_md OR rules 사용 시) |
+| 활용력 | tool_diversity 조건표 기반 + harness_count 보너스 (≥2: +0.3, ≥5: +0.5) |
+| 판단력 | `strat_ratio*0.6 + alt_request_ratio*0.2 + thinking_turn_ratio*0.2` (하네스 보너스 제거 → 정리력으로 이전) |
+| 정리력 | `(claude_md_lines/200)*0.25 + sections/10*0.10 + handoff*0.15 + docs/1000*0.20 + cmds/5*0.15 + skills/3*0.10 + rules/3*0.05) * 5.0` + 하네스 보너스 (+0.3, claude_md OR rules 접근 시) |
 
-**하네스 엔지니어링 신호** (`harness_count` 0~7, v1.5.0):
+**하네스 엔지니어링 신호** (`harness_count` 0~7, v2.0.0):
 
 | Tier | 신호 키 | convert_sessions.py 탐지 방법 |
 |------|---------|-------------------------------|
@@ -118,7 +119,7 @@ ls ~/ax-eval/conversations/
 | 3 | `rules_used` | .claude/rules/ 경로 파일 접근 |
 | 3 | `mcp_used` | mcp__* 도구 사용 여부 |
 
-> 4축 × 5레벨 정성 기준 → `references/ax-maturity-model.md` 참조.
+> 5축 × 5레벨 정성 기준 → `references/ax-maturity-model.md` 참조.
 
 ---
 
@@ -133,7 +134,7 @@ ax-eval/
 ├── .claude/commands/ax-eval.md        ← 로컬 캐시된 커맨드 라우터
 ├── .claude/skills/                    ← 로컬 실행 캐시 (소스 sync 후 반영)
 ├── commands/ax-eval.md                ← 커맨드 라우터 소스 (시작|체크|팁)
-├── agents/ax-analyst.md               ← 4축 스코어링 서브에이전트 (스코어링 공식 포함)
+├── agents/ax-analyst.md               ← 5축 스코어링 서브에이전트 (스코어링 공식 포함)
 ├── skills/                            ← 소스 원본 (수정은 여기서)
 │   ├── ax-eval/SKILL.md              ← 메인 라우터 스킬 (user-invocable: true, 인자 → 서브스킬 위임)
 │   ├── ax-eval-onboard/SKILL.md      ← 초기 설정 플로우
@@ -144,7 +145,7 @@ ax-eval/
 │   ├── ax-nudge.sh                    ← 세션 시작 시 약한 축 nudge (글로벌 복사본)
 │   └── ax-eval-log-sync.sh            ← 세션 종료 시 convert_sessions.py 실행
 └── references/
-    ├── ax-maturity-model.md           ← 4축 × 5레벨 정의 (스코어링 근거)
+    ├── ax-maturity-model.md           ← 5축 × 5레벨 정의 (스코어링 근거)
     ├── antipatterns.md                ← 역할별 흔한 실수
     ├── prompt-templates.md            ← 업무별 프롬프트 템플릿
     └── tips-by-level.md               ← 레벨별 성장 행동 지침

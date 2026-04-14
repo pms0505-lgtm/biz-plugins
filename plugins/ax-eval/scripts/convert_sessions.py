@@ -165,6 +165,117 @@ def count_keywords(text: str, keywords: list) -> int:
     return count
 
 
+def resolve_cwd(cwd_str: str) -> Path | None:
+    """cwd 문자열(Windows/git-bash 혼재)을 Path로 변환.
+    - /c/Users/... → C:/Users/...
+    - 일반 경로 → Path 그대로
+    """
+    if not cwd_str:
+        return None
+    s = cwd_str.strip()
+    # git-bash 스타일: /c/Users/... → C:/Users/...
+    m = re.match(r'^/([a-zA-Z])/(.*)', s)
+    if m:
+        s = m.group(1).upper() + ":/" + m.group(2)
+    p = Path(s)
+    return p if p.exists() else None
+
+
+def _count_md_lines(path: Path) -> int:
+    """Markdown 파일의 라인 수 반환 (읽기 실패 시 0)"""
+    try:
+        return len(path.read_text(encoding="utf-8", errors="replace").splitlines())
+    except OSError:
+        return 0
+
+
+def _count_md_sections(path: Path) -> int:
+    """## 헤더 개수 반환"""
+    try:
+        return sum(
+            1 for line in path.read_text(encoding="utf-8", errors="replace").splitlines()
+            if line.startswith("## ")
+        )
+    except OSError:
+        return 0
+
+
+def extract_asset_signals(cwd_str: str) -> dict:
+    """프로젝트 디렉토리를 스캔해 정리력 축 신호 8개를 반환.
+
+    반환 키:
+      claude_md_lines     — CLAUDE.md 라인 수
+      claude_md_sections  — CLAUDE.md의 ## 헤더 수
+      handoff_present     — handoff.md 또는 progress.md 존재 여부 (0/1)
+      docs_volume         — references/+docs/ 폴더 .md 파일 총 라인 수
+      slash_cmd_defined   — .claude/commands/ 또는 commands/ 정의 파일 수
+      skill_defined       — .claude/skills/ 또는 skills/ 정의 디렉토리 수
+      rules_defined       — .claude/rules/ .md 파일 수
+      schema_defined      — types/+models/+schema.json 존재 여부 (0/1)
+    """
+    defaults: dict = {
+        "claude_md_lines": 0,
+        "claude_md_sections": 0,
+        "handoff_present": 0,
+        "docs_volume": 0,
+        "slash_cmd_defined": 0,
+        "skill_defined": 0,
+        "rules_defined": 0,
+        "schema_defined": 0,
+    }
+    proj = resolve_cwd(cwd_str)
+    if proj is None:
+        return defaults
+
+    # CLAUDE.md
+    claude_md = proj / "CLAUDE.md"
+    if claude_md.exists():
+        defaults["claude_md_lines"] = _count_md_lines(claude_md)
+        defaults["claude_md_sections"] = _count_md_sections(claude_md)
+
+    # handoff / progress
+    for fname in ("handoff.md", "progress.md", "HANDOFF.md", "PROGRESS.md"):
+        if (proj / fname).exists():
+            defaults["handoff_present"] = 1
+            break
+
+    # docs_volume: references/ + docs/ 폴더의 .md 파일 총 라인
+    total_doc_lines = 0
+    for folder in ("references", "docs"):
+        doc_dir = proj / folder
+        if doc_dir.is_dir():
+            for md_file in doc_dir.rglob("*.md"):
+                total_doc_lines += _count_md_lines(md_file)
+    defaults["docs_volume"] = total_doc_lines
+
+    # slash_cmd_defined: commands/ 파일 수
+    for cmd_dir in (proj / ".claude" / "commands", proj / "commands"):
+        if cmd_dir.is_dir():
+            count = sum(1 for f in cmd_dir.iterdir() if f.is_file())
+            defaults["slash_cmd_defined"] = max(defaults["slash_cmd_defined"], count)
+
+    # skill_defined: skills/ 디렉토리 수
+    for skill_dir in (proj / ".claude" / "skills", proj / "skills"):
+        if skill_dir.is_dir():
+            count = sum(1 for d in skill_dir.iterdir() if d.is_dir())
+            defaults["skill_defined"] = max(defaults["skill_defined"], count)
+
+    # rules_defined: .claude/rules/ .md 파일 수
+    rules_dir = proj / ".claude" / "rules"
+    if rules_dir.is_dir():
+        defaults["rules_defined"] = sum(1 for f in rules_dir.glob("*.md") if f.is_file())
+
+    # schema_defined: types/, models/ 폴더 또는 *.schema.json 존재 여부
+    schema_exists = (
+        (proj / "types").is_dir()
+        or (proj / "models").is_dir()
+        or any(proj.rglob("*.schema.json"))
+    )
+    defaults["schema_defined"] = 1 if schema_exists else 0
+
+    return defaults
+
+
 def has_context_specificity(text: str) -> bool:
     """파일명, 업무 단위 숫자, 구체적 명사 포함 여부 (맥락 구체성)
 
@@ -438,6 +549,10 @@ def convert_session(jsonl_path: Path, verbose: bool = False) -> dict:
         + metadata["mcp_used"]
     )
 
+    # 정리력(자산화) 신호: 프로젝트 디렉토리 스캔
+    asset_signals = extract_asset_signals(metadata.get("cwd") or "")
+    metadata.update(asset_signals)
+
     return {"messages": messages, "metadata": metadata}
 
 
@@ -510,6 +625,15 @@ def session_to_markdown(session_data: dict, project_name: str) -> str:
     lines.append(f"custom_skill_used: {meta['custom_skill_used']}")
     lines.append(f"mcp_used: {meta['mcp_used']}")
     lines.append(f"harness_count: {meta['harness_count']}")
+    # 정리력(자산화) 신호
+    lines.append(f"claude_md_lines: {meta.get('claude_md_lines', 0)}")
+    lines.append(f"claude_md_sections: {meta.get('claude_md_sections', 0)}")
+    lines.append(f"handoff_present: {meta.get('handoff_present', 0)}")
+    lines.append(f"docs_volume: {meta.get('docs_volume', 0)}")
+    lines.append(f"slash_cmd_defined: {meta.get('slash_cmd_defined', 0)}")
+    lines.append(f"skill_defined: {meta.get('skill_defined', 0)}")
+    lines.append(f"rules_defined: {meta.get('rules_defined', 0)}")
+    lines.append(f"schema_defined: {meta.get('schema_defined', 0)}")
     lines.append("---")
     lines.append("")
 
