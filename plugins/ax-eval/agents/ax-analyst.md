@@ -56,7 +56,11 @@ allowed-tools:
 | `rules_used` | .claude/rules 파일 사용 여부 (0/1) |
 | `memory_used` | memory 파일 사용 여부 (0/1) |
 | `slash_cmd_ratio` | 슬래시 커맨드 사용 비율 |
-| `harness_count` | 하네스 엔지니어링 신호 합계 (0~4) |
+| `plan_mode_used` | EnterPlanMode/ExitPlanMode 사용 여부 (0/1) |
+| `custom_skill_used` | Skill 도구 사용 여부 (0/1) |
+| `mcp_used` | mcp__* 도구 사용 여부 (0/1) |
+| `thinking_turn_ratio` | AI 사고(thinking) 블록을 사용한 어시스턴트 턴 비율 |
+| `harness_count` | 하네스 엔지니어링 신호 합계 (0~7, `orch_tool_count` 제외) |
 
 ### 3. 집계 방식
 
@@ -108,8 +112,8 @@ allowed-tools:
 | 5 | tool_diversity >= 5 AND (orch_tool_count >= 1 OR harness_count >= 3) | 오케스트레이션 또는 고급 환경 설계 능숙 |
 
 **하네스 보너스**: 위 점수 산출 후 harness_count 기준으로 가산 (상한 5):
-- harness_count >= 1: +0.5점
-- harness_count >= 3: +1.0점 (0.5 대신 1.0 적용)
+- harness_count >= 2: +0.5점
+- harness_count >= 5: +1.0점 (0.5 대신 1.0 적용)
 
 #### 판단력 점수 (strat_ratio + alt_request_ratio + thinking_turn_ratio + harness)
 
@@ -202,11 +206,36 @@ COMPOSITE_DELTA: +0.4
 SESSIONS_ANALYZED: 15
 WEAKEST_AXIS: 검증력
 MOST_DROPPED_AXIS: (없음 또는 가장 delta가 음수인 축명)
+HARNESS_UNUSED: claude_md, memory, plan_mode
 ```
 
 - `SCORE_DELTAS`: 현재 점수 - 이전 점수. 소수점 첫째 자리, 양수면 `+` 부호 붙임
 - `MOST_DROPPED_AXIS`: SCORE_DELTAS 중 가장 음수가 큰 축. 모든 delta가 0 이상이면 `없음` 반환
 - 첫 평가인 경우 PREV_* 필드, SCORE_DELTAS, COMPOSITE_DELTA, MOST_DROPPED_AXIS 모두 `없음` 반환
+- `HARNESS_UNUSED`: 분석 세션 전체에서 한 번도 사용하지 않은 기능 키 목록 (Tier 필터 적용)
+
+**HARNESS_UNUSED 산출 방법**:
+
+1. 분석한 전체 세션에서 각 신호의 MAX 집계 (한 세션이라도 사용 → 사용함)
+2. LEVEL에 따라 Tier 필터 적용:
+   - LEVEL 1 (⭐ 입문): Tier 1만 검사
+   - LEVEL 2 (⭐⭐ 활용): Tier 1 + 2
+   - LEVEL 3+ (⭐⭐⭐~): Tier 1 + 2 + 3
+
+**신호 → 기능 키 매핑 (Tier 포함)**:
+
+| frontmatter 키 | 미사용 판정 기준 | 기능 키 | Tier |
+|----------------|----------------|---------|------|
+| `claude_md_access` | MAX == 0 | `claude_md` | 1 |
+| `memory_used` | MAX == 0 | `memory` | 1 |
+| `slash_cmd_ratio` | MAX ≤ 0.05 | `slash_cmd` | 1 |
+| `plan_mode_used` | MAX == 0 | `plan_mode` | 2 |
+| `orch_tool_count` | MAX == 0 | `sub_agent` | 2 |
+| `custom_skill_used` | MAX == 0 | `custom_skill` | 2 |
+| `rules_used` | MAX == 0 | `rules` | 3 |
+| `mcp_used` | MAX == 0 | `mcp` | 3 |
+
+- 해당 Tier 내 미사용 기능이 없으면: `HARNESS_UNUSED: 없음`
 
 ## 엣지 케이스 판단 규칙
 

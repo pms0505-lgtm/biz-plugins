@@ -18,9 +18,6 @@ python scripts/convert_sessions.py
 # 특정 프로젝트만 변환 (--project는 ~/.claude/projects/ 하위 디렉토리명)
 python scripts/convert_sessions.py --project -Users-<사용자명>-Desktop-<프로젝트명>
 
-# 여러 프로젝트 지정 (positional 인자)
-python scripts/convert_sessions.py -Users-<사용자명>-proj1 -Users-<사용자명>-proj2
-
 # 전체 재변환 (캐시 무시)
 python scripts/convert_sessions.py --force
 
@@ -31,10 +28,21 @@ python scripts/convert_sessions.py --verbose
 ls ~/ax-eval/conversations/
 ```
 
-> Python 3.8+ 필요. 외부 패키지 의존성 없음 (표준 라이브러리만 사용).
+> Python 3.8+ 필요. 외부 패키지 의존성 없음.
 >
-> **증분 변환**: JSONL 파일 수정 시각이 기존 MD보다 최신일 때만 재변환. `--force`로 전체 재변환.
+> **증분 변환**: JSONL 파일 수정 시각이 기존 MD보다 최신일 때만 재변환.
 > **프로젝트 이름 매핑**: `~/ax-eval/config/project_names.json`에 `{"디렉토리명": "표시명"}` 형식으로 저장.
+
+### SKILL.md 변경 후 검증 워크플로우
+
+```bash
+# 1. 스킬 캐시에 동기화 (아래 배포 아키텍처 섹션의 sync 명령 실행)
+# 2. Claude Code 재시작 (훅/스킬 캐시 갱신)
+# 3. E2E 테스트 순서
+/ax-eval 시작   # 역할 선택 플로우 확인
+/ax-eval 체크   # 로그 변환 → 분석 → 출력 형식 확인
+/ax-eval 팁     # 레벨별 팁 출력 확인
+```
 
 ---
 
@@ -42,7 +50,7 @@ ls ~/ax-eval/conversations/
 
 ```
 사용자: /ax-eval 체크
-    └→ commands/ax-eval.md (라우터)
+    └→ skills/ax-eval/SKILL.md (메인 라우터, user-invocable: true)
         └→ skills/ax-eval-check/SKILL.md
             ├→ scripts/convert_sessions.py  (최신 로그 변환)
             └→ agents/ax-analyst.md         (4축 스코어 계산)
@@ -73,7 +81,7 @@ ls ~/ax-eval/conversations/
 |------|------|
 | 측정 축 | 요청력 / 검증력 / 활용력 / 판단력 |
 | 레벨 | ⭐(입문) ~ ⭐⭐⭐⭐⭐(전략) |
-| 역할 | 문서 작성 / 데이터 분석 / 소통 조율 / 업무 자동화 |
+| 역할 | UA마케터 / CRM마케터 / 디자이너 / 데이터분석가 / 개발자 / 미선택 |
 | 데이터 | `~/.claude/projects/**/*.jsonl` 자동 분석 |
 
 **레벨 점수 범위** (종합 가중 평균 → 별점):
@@ -86,7 +94,31 @@ ls ~/ax-eval/conversations/
 | 3.4 이상 4.2 미만 | 4단계 주도 | ⭐⭐⭐⭐ |
 | 4.2 이상 5.0 이하 | 5단계 전략 | ⭐⭐⭐⭐⭐ |
 
-**집계 방식**: 최대 20개 최신 세션, 각 축별 **중앙값(median)** 사용 (이상치 최소화). 세션 3개 미만이면 `DATA_INSUFFICIENT` 반환, 3~5개이면 최소 ⭐⭐ 보장.
+**집계 방식**: 최대 20개 최신 세션, 각 축별 **중앙값(median)** 사용. 세션 3개 미만이면 `DATA_INSUFFICIENT` 반환, 3~5개이면 실제 점수 그대로 출력 (출력에 `데이터 부족` 주석 추가).
+
+**스코어링 공식 요약** (상세는 `agents/ax-analyst.md` 참조):
+
+| 축 | 공식 |
+|----|------|
+| 요청력 | `min(avg_len/200,1.0)*0.2 + specific_ratio*0.5 + structure_ratio*0.3` (+0.1 보너스: output_format_spec_ratio > 0.3) |
+| 검증력 | `verify_ratio*0.5 + correction_ratio*0.3 + follow_up_ratio*0.2` |
+| 활용력 | tool_diversity 조건표 기반 + harness_count 보너스 (≥2: +0.5, ≥5: +1.0) |
+| 판단력 | `strat_ratio*0.6 + alt_request_ratio*0.2 + thinking_turn_ratio*0.2` + harness 보너스 (+0.3, claude_md OR rules 사용 시) |
+
+**하네스 엔지니어링 신호** (`harness_count` 0~7, v1.5.0):
+
+| Tier | 신호 키 | convert_sessions.py 탐지 방법 |
+|------|---------|-------------------------------|
+| 1 | `claude_md_access` | tool Read/Write로 CLAUDE.md 접근 |
+| 1 | `memory_used` | memory/ 경로 파일 접근 |
+| 1 | `slash_cmd_ratio` | Skill 도구 호출 비율 |
+| 2 | `plan_mode_used` | EnterPlanMode/ExitPlanMode 사용 |
+| 2 | `orch_tool_count` | Agent/Task 오케스트레이션 도구 수 (**harness_count 합산 제외** — 활용력 점수에서 직접 사용) |
+| 2 | `custom_skill_used` | Skill 도구 사용 여부 |
+| 3 | `rules_used` | .claude/rules/ 경로 파일 접근 |
+| 3 | `mcp_used` | mcp__* 도구 사용 여부 |
+
+> 4축 × 5레벨 정성 기준 → `references/ax-maturity-model.md` 참조.
 
 ---
 
@@ -96,20 +128,29 @@ ls ~/ax-eval/conversations/
 ax-eval/
 ├── CLAUDE.md                          ← 이 파일
 ├── .claude/settings.local.json        ← SessionStart compact 훅 + 로컬 permissions
-├── .claude-plugin/plugin.json         ← 플러그인 매니페스트 (훅 없음, 메타데이터만)
-├── commands/ax-eval.md                ← 커맨드 라우터 (시작|체크|팁)
-├── agents/ax-analyst.md               ← 4축 스코어링 서브에이전트
-├── skills/
+├── .claude-plugin/plugin.json         ← 플러그인 매니페스트 (메타데이터만 — 배포 전 버전 bump 필요)
+├── hooks/hooks.json                   ← 플러그인 번들 훅 정의 (SessionStart/SessionEnd)
+├── .claude/commands/ax-eval.md        ← 로컬 캐시된 커맨드 라우터
+├── .claude/skills/                    ← 로컬 실행 캐시 (소스 sync 후 반영)
+├── commands/ax-eval.md                ← 커맨드 라우터 소스 (시작|체크|팁)
+├── agents/ax-analyst.md               ← 4축 스코어링 서브에이전트 (스코어링 공식 포함)
+├── skills/                            ← 소스 원본 (수정은 여기서)
+│   ├── ax-eval/SKILL.md              ← 메인 라우터 스킬 (user-invocable: true, 인자 → 서브스킬 위임)
 │   ├── ax-eval-onboard/SKILL.md      ← 초기 설정 플로우
-│   ├── ax-eval-check/SKILL.md        ← 레벨 체크 + 출력
+│   ├── ax-eval-check/SKILL.md        ← 레벨 체크 + 출력 ({PLUGIN_SCRIPTS_DIR} 플레이스홀더 포함)
 │   └── ax-eval-tip/SKILL.md          ← 레벨별 맞춤 팁
-├── scripts/convert_sessions.py        ← JSONL→MD 변환 (vibe-sunsang 기반)
+├── scripts/
+│   ├── convert_sessions.py            ← JSONL→MD 변환 (vibe-sunsang 기반)
+│   ├── ax-nudge.sh                    ← 세션 시작 시 약한 축 nudge (글로벌 복사본)
+│   └── ax-eval-log-sync.sh            ← 세션 종료 시 convert_sessions.py 실행
 └── references/
     ├── ax-maturity-model.md           ← 4축 × 5레벨 정의 (스코어링 근거)
     ├── antipatterns.md                ← 역할별 흔한 실수
     ├── prompt-templates.md            ← 업무별 프롬프트 템플릿
     └── tips-by-level.md               ← 레벨별 성장 행동 지침
 ```
+
+> **`skills/` vs `.claude/skills/` 구분**: `skills/`는 소스 원본, `.claude/skills/`는 로컬 실행 캐시. SKILL.md를 수정하면 반드시 아래 sync 명령으로 캐시에 반영해야 변경이 적용됨.
 
 ### 사용자 데이터 경로 (`~/ax-eval/`)
 
@@ -124,72 +165,22 @@ ax-eval/
 
 ---
 
-## 스코어링 지표 매핑
-
-convert_sessions.py가 YAML frontmatter에 기록하는 AX 전용 지표:
-
-| frontmatter 키 | 4축 | 설명 |
-|----------------|-----|------|
-| `avg_user_msg_len` | 요청력 | 평균 메시지 길이 |
-| `specific_context_ratio` | 요청력 | 파일명/숫자 포함 비율 |
-| `verify_ratio` | 검증력 | 검증 키워드 비율 |
-| `tool_diversity` | 활용력 | 사용 도구 종류 수 |
-| `orch_tool_count` | 활용력 | Task/Agent 호출 횟수 |
-| `tool_error_count` | (참고) | 도구 오류 횟수 |
-| `strat_ratio` | 판단력 | 전략 키워드 비율 |
-| `thinking_turn_ratio` | 판단력 | 심층 사고 비율 |
-| `structure_ratio` | 요청력 | 구조화 요청 비율 (번호목록/섹션태그) |
-| `alt_request_ratio` | 판단력 | 대안/비교 탐색 비율 |
-| `correction_ratio` | 검증력 | 수정 요청 비율 |
-| `output_format_spec_ratio` | 요청력 | 출력 형식 명시 비율 |
-| `follow_up_ratio` | 검증력 | 후속 질문 비율 |
-| `claude_md_access` | 활용력/판단력 | CLAUDE.md 접근 여부 (0/1) |
-| `rules_used` | 판단력 | .claude/rules 파일 사용 여부 (0/1) |
-| `memory_used` | 활용력 | memory 파일 사용 여부 (0/1) |
-| `slash_cmd_ratio` | 활용력 | 슬래시 커맨드 사용 비율 |
-| `harness_count` | 활용력/판단력 | 하네스 신호 합계 (0~4), 보너스 점수 계산 기준 |
-
-**역할별 가중치** (`references/ax-maturity-model.md` 기준):
-
-| 역할 | 요청력 | 검증력 | 활용력 | 판단력 |
-|------|--------|--------|--------|--------|
-| UA마케터 | 35% | 25% | 25% | 15% |
-| CRM마케터 | 30% | 30% | 15% | 25% |
-| 디자이너 | 40% | 20% | 25% | 15% |
-| 데이터분석가 | 20% | 35% | 25% | 20% |
-| 개발자 | 20% | 30% | 35% | 15% |
-| 미선택 (기본) | 25% | 25% | 25% | 25% |
-
----
-
 ## Auto-Nudge 훅
 
-`SessionStart` / `SessionStop` 훅으로 자동 피드백 제공. **`plugin.json`에는 훅 없음** — 훅은 두 곳에 분리:
+`SessionStart` / `SessionEnd` 훅으로 자동 피드백 제공. 훅은 세 곳에 분리:
 
 | 훅 | 파일 | 위치 |
 |----|------|------|
 | SessionStart compact | `.claude/settings.local.json` | repo 내 |
-| SessionStart ax-nudge | `~/.claude/settings.json` + `~/.claude/scripts/ax-nudge.sh` | 글로벌 (repo 외부) |
-| SessionStop log-sync | `~/.claude/settings.json` + `~/.claude/scripts/ax-eval-log-sync.sh` | 글로벌 (repo 외부) |
+| SessionStart ax-nudge + 요청 코치 | `hooks/hooks.json` | repo 내 (플러그인 번들) |
+| SessionEnd log-sync | `hooks/hooks.json` | repo 내 (플러그인 번들) |
 
 - **compact**: 컨텍스트 압축 시 플러그인 핵심 컨텍스트 요약 주입
-- **ax-nudge**: 약한 축을 systemMessage로 주입 (7일 쿨다운, assessment 없으면 스킵)
+- **ax-nudge**: 최근 assessment의 약한 축을 systemMessage로 주입 (7일 쿨다운, assessment 없으면 스킵)
+- **요청 코치**: 모호한 요청 감지 시 답변 후 💡 요청 팁 제안
 - **log-sync**: 세션 종료 시 `convert_sessions.py` 백그라운드 실행
-- **Staleness**: assessment가 14일 이상 지났으면 세션 시작 시 `/ax-eval 체크` 권유
 
-훅 스크립트 수정 시: `~/.claude/scripts/ax-nudge.sh` / `ax-eval-log-sync.sh` (repo 외부, 별도 관리).
-
----
-
-## 엣지 케이스 처리 (ax-analyst.md 기준)
-
-| 상황 | 처리 |
-|------|------|
-| 세션 1~2개 | `DATA_INSUFFICIENT` 반환, 점수 산출 안 함 |
-| 세션 3~5개 | 정상 산출, 최소 ⭐⭐ 보장 |
-| 한 축만 5점, 나머지 1~2점 | 실제 대화 1개 샘플링하여 교차 검증 |
-| profile.json 없음 | 균등 가중치(25%×4) 적용 |
-| frontmatter 값 누락 | 해당 지표 제외, 나머지로만 산출 |
+`hooks/hooks.json`의 `${CLAUDE_PLUGIN_ROOT}` 플레이스홀더는 플러그인 설치 경로로 자동 해결됨.
 
 ---
 
@@ -205,6 +196,13 @@ convert_sessions.py가 YAML frontmatter에 기록하는 AX 전용 지표:
 - `~/ax-eval/` 사용자 데이터 직접 수정
 - 원본 JSONL 로그 수정
 - 비개발자가 이해 못할 용어를 레벨/팁에 사용
+- README/슬랙 소개 글에 검증 안 된 CLI 명령어 기재 (반드시 실제 실행 후 확인)
+
+### 배포 경로 변경 시 필수 동기화 대상
+배포 repo/marketplace 변경 → 아래 3곳 동시 업데이트:
+1. `README.md` 설치 절차
+2. `drafts/slack-intro.md` 설치 섹션
+3. `CLAUDE.md` 배포 경로 섹션
 
 ---
 
@@ -226,14 +224,12 @@ Claude Code는 `user-invocable: true`가 있는 스킬만 `/skillname`으로 호
    └── .claude-plugin/marketplace.json  ← ax-eval 목록
    └── plugins/ax-eval/                 ← 서브모듈 or 직접 복사
 
-2. 팀원 ~/.claude/settings.json에 추가:
-   "extraKnownMarketplaces": {
-     "biz-plugins": { "source": { "source": "github", "repo": "pms0505-lgtm/biz-plugins" }}
-   }
-
-3. 설치:
+2. 팀원 설치 (Claude Code 터미널):
+   claude plugins marketplace add pms0505-lgtm/biz-plugins
    claude plugins install ax-eval@biz-plugins
 ```
+
+> **주의**: `claude plugins marketplace add` 의 source 형식은 `owner/repo`, `https://...`, `./path` 만 허용. `github:` 접두사 불가.
 
 ### 로컬 개발 시 (현재)
 `~/.claude/skills/ax-eval*/` 에 수동 복사 후 사용.
@@ -249,6 +245,30 @@ sed 's|{PLUGIN_SCRIPTS_DIR}|'"$HOME"'/Desktop/ax_eval/scripts|g' \
 sed 's|{PLUGIN_SCRIPTS_DIR}|'"$HOME"'/Desktop/ax_eval/scripts|g' \
   $PROJ/skills/ax-eval-onboard/SKILL.md > $DEST/ax-eval-onboard/SKILL.md
 ```
+
+**팀 배포 시 추가 단계** (biz-plugins 마켓플레이스 레포 동기화):
+```bash
+# ax-eval 소스를 biz-plugins/plugins/ax-eval/ 로 복사 후 push
+BIZ=~/Desktop/biz-plugins/plugins/ax-eval
+cp -r $PROJ/skills $BIZ/
+cp -r $PROJ/agents $BIZ/
+cp -r $PROJ/references $BIZ/
+cp -r $PROJ/scripts $BIZ/
+cp -r $PROJ/hooks $BIZ/
+cp $PROJ/.claude-plugin/plugin.json $BIZ/.claude-plugin/plugin.json
+# 버전 bump 후 git push
+```
+
+## 주의사항 (함정 방지)
+
+| 항목 | 내용 |
+|------|------|
+| 스킬 변경 적용 | `skills/` 수정 후 반드시 `.claude/skills/` 캐시 sync + Claude Code 재시작해야 반영됨 |
+| 세션 3~5개 최소 보장 없음 | ax-analyst의 "최소 ⭐⭐ 보장" 구문은 제거됨. 실제 점수 그대로 출력 |
+| SessionStop → SessionEnd | 훅 이벤트명이 변경됨. hooks.json 수정 시 `SessionEnd` 사용 (구 `SessionStop` 아님) |
+| `.claude/commands/` 로딩 안 됨 | 플러그인은 `skills/` 기반으로만 진입점 노출. `commands/`는 캐시로 로딩되지 않음 |
+
+---
 
 ## 확장 포인트
 

@@ -230,6 +230,9 @@ def convert_session(jsonl_path: Path, verbose: bool = False) -> dict:
     rules_access_count = 0      # .claude/rules 파일 접근 여부
     memory_access_count = 0     # memory 파일 접근 여부
     slash_cmd_count = 0         # 슬래시 커맨드 사용 횟수
+    plan_mode_count = 0         # EnterPlanMode/ExitPlanMode 사용
+    custom_skill_count = 0      # Skill 도구 사용 (커스텀 스킬)
+    mcp_tool_count = 0          # mcp__* 도구 사용 (MCP 서버)
 
     with open(jsonl_path, "r", encoding="utf-8") as f:
         for line in f:
@@ -327,6 +330,12 @@ def convert_session(jsonl_path: Path, verbose: bool = False) -> dict:
                             if tool_name in ORCH_TOOLS:
                                 orch_tool_count += 1
                             # 하네스 엔지니어링 신호 감지
+                            if tool_name in ("EnterPlanMode", "ExitPlanMode"):
+                                plan_mode_count += 1
+                            if tool_name == "Skill":
+                                custom_skill_count += 1
+                            if tool_name.startswith("mcp__"):
+                                mcp_tool_count += 1
                             tool_input = block.get("input") or {}
                             if isinstance(tool_input, dict):
                                 file_path = tool_input.get("file_path", "") or ""
@@ -416,11 +425,17 @@ def convert_session(jsonl_path: Path, verbose: bool = False) -> dict:
     metadata["slash_cmd_ratio"] = (
         round(slash_cmd_count / user_turn_count, 2) if user_turn_count > 0 else 0.0
     )
+    metadata["plan_mode_used"] = 1 if plan_mode_count > 0 else 0
+    metadata["custom_skill_used"] = 1 if custom_skill_count > 0 else 0
+    metadata["mcp_used"] = 1 if mcp_tool_count > 0 else 0
     metadata["harness_count"] = (
         metadata["claude_md_access"]
         + metadata["rules_used"]
         + metadata["memory_used"]
         + (1 if metadata["slash_cmd_ratio"] > 0.05 else 0)
+        + metadata["plan_mode_used"]
+        + metadata["custom_skill_used"]
+        + metadata["mcp_used"]
     )
 
     return {"messages": messages, "metadata": metadata}
@@ -491,6 +506,9 @@ def session_to_markdown(session_data: dict, project_name: str) -> str:
     lines.append(f"rules_used: {meta['rules_used']}")
     lines.append(f"memory_used: {meta['memory_used']}")
     lines.append(f"slash_cmd_ratio: {meta['slash_cmd_ratio']}")
+    lines.append(f"plan_mode_used: {meta['plan_mode_used']}")
+    lines.append(f"custom_skill_used: {meta['custom_skill_used']}")
+    lines.append(f"mcp_used: {meta['mcp_used']}")
     lines.append(f"harness_count: {meta['harness_count']}")
     lines.append("---")
     lines.append("")
