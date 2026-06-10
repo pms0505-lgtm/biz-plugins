@@ -148,7 +148,8 @@ ax-eval/
     ├── ax-maturity-model.md           ← 5축 × 5레벨 정의 (스코어링 근거)
     ├── antipatterns.md                ← 역할별 흔한 실수
     ├── prompt-templates.md            ← 업무별 프롬프트 템플릿
-    └── tips-by-level.md               ← 레벨별 성장 행동 지침
+    ├── tips-by-level.md               ← 레벨별 성장 행동 지침
+    └── loop-journal.md                ← 스킬 개선 루프 저널 (실패노트·변경↔점수·빼기, 오너 전용)
 ```
 
 > **`skills/` vs `.claude/skills/` 구분**: `skills/`는 소스 원본, `.claude/skills/`는 로컬 실행 캐시. SKILL.md를 수정하면 반드시 아래 sync 명령으로 캐시에 반영해야 변경이 적용됨.
@@ -204,6 +205,22 @@ ax-eval/
 1. `README.md` 설치 절차
 2. `drafts/slack-intro.md` 설치 섹션
 3. `CLAUDE.md` 배포 경로 섹션
+
+---
+
+## 스킬 개선 루프 프로토콜
+
+> 이 플러그인(ax-eval / input / output 스킬)을 **고칠 때** 따른다. 일반 직원 UX(3-command)가 아니라 **오너의 자가개선 루프**. 모든 변경·실패·삭제는 `references/loop-journal.md`에 1줄 기록. 출처: 영상 「루프 엔지니어링」.
+
+| 룰 | 내용 | 위반 시 증상 |
+|----|------|-------------|
+| **① 측정 없는 진화 금지** | 스킬 고치기 **전** `/ax-eval 체크`로 baseline 확보 → 며칠 뒤 재체크. 점수 안 재고 바꾸지 않는다 | "좋아졌겠지" 착각 — 한 군데 개선·세 군데 퇴행을 못 본다 |
+| **② 한 번에 하나만** | 한 사이클에 변경 **1개**(SKILL 한 줄 / 키워드 1개 / 룰 1개). 점수 오른 것만 유지, 아니면 revert + 「실패 노트」 1줄 | 5개 동시 변경 → 무엇이 효과인지 원인 추적 불가 |
+| **③ 빼기** | **3 사이클마다 1번**은 추가 대신 "뭘 지울까" 검토(references 죽은 항목·convert_sessions 키워드·안 맞는 룰). 지웠는데 점수 유지 = 군살 제거 성공 | 룰이 더하기만 → 비대해지고 모순 누적 |
+
+**골든셋(고정 시험지)**: `references/ax-maturity-model.md` + 누적 `~/ax-eval/assessments/*.json`. 측정 중에는 평가 기준(축·공식·convert_sessions 키워드)을 **함께 바꾸지 않는다** — 시험지가 변하면 점수 비교가 무의미. 기준 변경 자체가 목적이면 그건 별도 사이클로, baseline을 새로 찍는다.
+
+**사람의 자리(휴먼 온 더 루프)**: 기준 정의·변경 승인·룰 확정은 사람만. AI는 초안까지. E2E QA(`scripts/verify-e2e.sh` + 3-command 수동 점검)는 아직 사람 영역. 상세 절차·저널 템플릿은 `references/loop-journal.md`.
 
 ---
 
